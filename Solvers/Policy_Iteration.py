@@ -57,7 +57,13 @@ class PolicyIteration(AbstractSolver):
             ################################
             #   YOUR IMPLEMENTATION HERE   #
             ################################
-            pass
+            # Expected return of each action under the freshly evaluated V:
+            # sum over s', r of p(s', r | s, a) * [r + gamma * V(s')]
+            action_values = self.one_step_lookahead(s)
+            # np.argmax returns the first maximum, so ties go to the lowest action index
+            best_action = np.argmax(action_values)
+            # Make the policy deterministic and greedy: pi(best_action | s) = 1, all others 0
+            self.policy[s] = np.eye(self.env.action_space.n)[best_action]
 
         # In DP methods we don't interact with the environment so we will set the reward to be the sum of state values
         # and the number of steps to -1 representing an invalid value
@@ -106,6 +112,28 @@ class PolicyIteration(AbstractSolver):
         ################################
         #   YOUR IMPLEMENTATION HERE   #
         ################################
+        num_states = self.env.observation_space.n
+        num_actions = self.env.action_space.n
+
+        # Under the fixed policy pi, the Bellman expectation equation is linear:
+        #   V = R_pi + gamma * P_pi @ V   =>   (I - gamma * P_pi) @ V = R_pi
+        # where P_pi[s, s'] is the probability of moving from s to s' when following pi,
+        # and R_pi[s] is the expected immediate reward in s when following pi.
+        transition_matrix = np.zeros((num_states, num_states))  # P_pi
+        expected_rewards = np.zeros(num_states)  # R_pi
+
+        for state in range(num_states):
+            for action in range(num_actions):
+                action_prob = self.policy[state, action]  # pi(action | state)
+                if action_prob == 0:
+                    continue
+                for prob, next_state, reward, done in self.env.P[state][action]:
+                    transition_matrix[state, next_state] += action_prob * prob
+                    expected_rewards[state] += action_prob * prob * reward
+
+        # Solve the linear system exactly instead of sweeping until the change drops below theta
+        system_matrix = np.eye(num_states) - self.options.gamma * transition_matrix
+        self.V = np.linalg.solve(system_matrix, expected_rewards)
 
     def create_greedy_policy(self):
         """

@@ -78,7 +78,12 @@ class ValueIteration(AbstractSolver):
             ################################
             #   YOUR IMPLEMENTATION HERE   #
             ################################
-            pass
+            # Expected return of taking each action from this state:
+            # sum over s', r of p(s', r | s, a) * [r + gamma * V(s')]
+            action_values = self.one_step_lookahead(each_state)
+            # V(s) <- max_a of those values. Written directly into self.V so
+            # states later in this sweep already see the new value.
+            self.V[each_state] = np.max(action_values)
 
         # Dont worry about this part
         self.statistics[Statistics.Rewards.value] = np.sum(self.V)
@@ -151,7 +156,11 @@ class ValueIteration(AbstractSolver):
             ################################
             #   YOUR IMPLEMENTATION HERE   #
             ################################
-            
+            # Act greedily with respect to the current value estimates:
+            # pick the action with the highest expected return from this state.
+            action_values = self.one_step_lookahead(state)
+            best_action = np.argmax(action_values)
+            return int(best_action)
 
         return policy_fn
 
@@ -203,6 +212,22 @@ class AsynchVI(ValueIteration):
         # Do a one-step lookahead to find the best action       #
         # Update the value function. Ref: Sutton book eq. 4.10. #
         #########################################################
+
+        # Pop the state whose value is expected to change the most
+        # (the queue stores the negated change, so the largest change pops first)
+        state_to_update = self.pq.pop()
+
+        # Bellman optimality backup for just this one state
+        action_values = self.one_step_lookahead(state_to_update)
+        self.V[state_to_update] = np.max(action_values)
+
+        # Changing V(state_to_update) can only affect states that lead into it,
+        # so recompute how much each predecessor would now change and
+        # re-prioritize it in the queue
+        for predecessor in self.pred.get(state_to_update, set()):
+            predecessor_best_value = np.max(self.one_step_lookahead(predecessor))
+            value_change = abs(self.V[predecessor] - predecessor_best_value)
+            self.pq.update(predecessor, -value_change)
 
         # you can ignore this part
         self.statistics[Statistics.Rewards.value] = np.sum(self.V)
