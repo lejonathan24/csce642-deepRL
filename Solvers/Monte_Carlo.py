@@ -62,12 +62,32 @@ class MonteCarlo(AbstractSolver):
         episode = []
         state, _ = self.env.reset()
         discount_factor = self.options.gamma
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
+        for _ in range(self.options.steps):
+            probs = self.policy(state)
+            action = np.random.choice(np.arange(len(probs)), p=probs)
+            next_state, reward, done, _ = self.step(action)
+            episode.append((state, action, reward))
+            if done:
+                break
+            state = next_state
+
+        # Returns are accumulated backwards; iterating in reverse and
+        # overwriting means the earliest (first) visit's return is the one kept.
+        first_visit_return = {}
+        G = 0.0
+        for state, action, reward in reversed(episode):
+            G = discount_factor * G + reward
+            first_visit_return[(state, action)] = G
+
+        for (state, action), G in first_visit_return.items():
+            self.returns_sum[(state, action)] += G
+            self.returns_count[(state, action)] += 1.0
+            self.Q[state][action] = (
+                self.returns_sum[(state, action)] / self.returns_count[(state, action)]
+            )
 
     def pull_updates(self):
-        raise NotImplementedError
+        return "&copy;"
 
     def __str__(self):
         return "Monte Carlo"
@@ -90,10 +110,9 @@ class MonteCarlo(AbstractSolver):
         nA = self.env.action_space.n
 
         def policy_fn(observation):
-            ################################
-            #   YOUR IMPLEMENTATION HERE   #
-            ################################
-            return None
+            A = np.ones(nA, dtype=float) * self.options.epsilon / nA
+            A[np.argmax(self.Q[observation])] += 1.0 - self.options.epsilon
+            return A
 
         return policy_fn
 
@@ -110,10 +129,7 @@ class MonteCarlo(AbstractSolver):
         """
 
         def policy_fn(state):
-            ################################
-            #   YOUR IMPLEMENTATION HERE   #
-            ################################
-            return -1
+            return np.argmax(self.Q[state])
 
         return policy_fn
 
@@ -164,11 +180,29 @@ class OffPolicyMC(MonteCarlo):
         episode = []
         # Reset the environment
         state, _ = self.env.reset()
+        for _ in range(self.options.steps):
+            probs = self.behavior_policy(state)
+            action = self.sample(probs)
+            next_state, reward, done, _ = self.step(action)
+            episode.append((state, action, reward))
+            if done:
+                break
+            state = next_state
 
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
-        
+        # Weighted importance sampling, processed backwards (S&B Section 5.7)
+        G = 0.0
+        W = 1.0
+        for state, action, reward in reversed(episode):
+            G = self.options.gamma * G + reward
+            self.C[state][action] += W
+            self.Q[state][action] += (W / self.C[state][action]) * (
+                G - self.Q[state][action]
+            )
+            # The greedy target policy gives zero probability to any other
+            # action, so earlier steps contribute nothing further.
+            if action != self.target_policy(state):
+                break
+            W = W / self.behavior_policy(state)[action]
 
     def create_random_policy(self):
         """
@@ -190,7 +224,7 @@ class OffPolicyMC(MonteCarlo):
         return policy_fn
 
     def pull_updates(self):
-        raise NotImplementedError
+        return "&copy;"
 
     def __str__(self):
         return "MC+IS"
