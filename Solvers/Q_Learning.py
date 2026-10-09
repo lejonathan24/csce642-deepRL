@@ -51,13 +51,23 @@ class QLearning(AbstractSolver):
 
         # Reset the environment
         state, _ = self.env.reset()
-
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
+        for _ in range(self.options.steps):
+            action = self.sample(self.epsilon_greedy(state))
+            next_state, reward, done, _ = self.step(action)
+            # Off-policy: bootstrap from the greedy action, not the one taken next
+            best_next_action = np.argmax(self.Q[next_state])
+            td_target = reward
+            if not done:
+                td_target += self.options.gamma * self.Q[next_state][best_next_action]
+            self.Q[state][action] += self.options.alpha * (
+                td_target - self.Q[state][action]
+            )
+            if done:
+                break
+            state = next_state
 
     def pull_updates(self):
-        raise NotImplementedError
+        return "&copy;"
 
     def __str__(self):
         return "Q-Learning"
@@ -76,10 +86,7 @@ class QLearning(AbstractSolver):
         """
 
         def policy_fn(state):
-            ################################
-            #   YOUR IMPLEMENTATION HERE   #
-            ################################
-            return -1
+            return np.argmax(self.Q[state])
 
         return policy_fn
 
@@ -97,9 +104,10 @@ class QLearning(AbstractSolver):
         Returns:
             Probability of taking actions as a vector where each entry is the probability of taking that action
         """
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
+        nA = self.env.action_space.n
+        probs = np.ones(nA, dtype=float) * self.options.epsilon / nA
+        probs[np.argmax(self.Q[state])] += 1.0 - self.options.epsilon
+        return probs
 
 
 class ApproxQLearning(QLearning):

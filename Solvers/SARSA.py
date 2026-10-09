@@ -45,12 +45,24 @@ class Sarsa(AbstractSolver):
 
         # Reset the environment
         state, _ = self.env.reset()
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
+        action = self.sample(self.epsilon_greedy(state))
+        for _ in range(self.options.steps):
+            next_state, reward, done, _ = self.step(action)
+            if done:
+                td_target = reward
+            else:
+                # On-policy: bootstrap from the action we will actually take next
+                next_action = self.sample(self.epsilon_greedy(next_state))
+                td_target = reward + self.options.gamma * self.Q[next_state][next_action]
+            self.Q[state][action] += self.options.alpha * (
+                td_target - self.Q[state][action]
+            )
+            if done:
+                break
+            state, action = next_state, next_action
 
     def pull_updates(self):
-        raise NotImplementedError
+        return "&copy;"
 
     def __str__(self):
         return "Sarsa"
@@ -64,10 +76,7 @@ class Sarsa(AbstractSolver):
         """
 
         def policy_fn(state):
-            ################################
-            #   YOUR IMPLEMENTATION HERE   #
-            ################################
-            return -1
+            return np.argmax(self.Q[state])
 
         return policy_fn
 
@@ -85,9 +94,10 @@ class Sarsa(AbstractSolver):
         Returns:
             Probability of taking actions as a vector where each entry is the probability of taking that action
         """
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
+        nA = self.env.action_space.n
+        probs = np.ones(nA, dtype=float) * self.options.epsilon / nA
+        probs[np.argmax(self.Q[state])] += 1.0 - self.options.epsilon
+        return probs
 
     def plot(self, stats, smoothing_window=20, final=False):
         plotting.plot_episode_stats(stats, smoothing_window, final=final)
